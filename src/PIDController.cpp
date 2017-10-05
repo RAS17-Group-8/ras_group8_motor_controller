@@ -1,4 +1,5 @@
 #include <ras_group8_motor_controller/PIDController.hpp>
+#include <ros/ros.h>
 
 namespace ras_group8_motor_controller
 {
@@ -6,9 +7,9 @@ namespace ras_group8_motor_controller
 PIDController::PIDController(double gainP, double gainI, double gainD,
                              double outMin, double outMax)
   : gainP_(gainP), gainI_(gainI), gainD_(gainD),
-    outMin_(outMin), outMax_(outMax),
-    integral_(0.0)
+    outMin_(outMin), outMax_(outMax)
 {
+  integral_ = 0;
 }
 
 PIDController::~PIDController()
@@ -26,6 +27,8 @@ double PIDController::update(double value, double target, double dt)
   derivative = (error - errorPrev_) / dt;
   
   output = gainP_ * error + gainI_ * integral_ + gainD_ * derivative;
+  
+  ROS_INFO("e = %f, i = %f, d = %f", error, integral_, derivative);
   
   /* Fit the output signal between outMax and outMin */
   if (output > outMax_) {
@@ -51,6 +54,7 @@ void PIDController::updateParams(double gainP, double gainI, double gainD,
 
 void PIDController::reset()
 {
+  ROS_INFO("Clearing the integral error");
   integral_ = 0.0;
 }
 
