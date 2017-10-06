@@ -16,7 +16,7 @@ class MotorController
 {
 public:
   
-  MotorController(ros::NodeHandle &nodeHandle);
+  MotorController(ros::NodeHandle &node_handle);
   
   virtual ~MotorController();
   
@@ -28,6 +28,7 @@ public:
   bool reload();
 
 private:
+  void wheelEncoderCallbackOneshot(const phidgets::motor_encoder& msg);
   void wheelEncoderCallback(const phidgets::motor_encoder& msg);
   
   void velocityCallback(const std_msgs::Float32::ConstPtr& msg);
@@ -36,11 +37,11 @@ private:
                       std_srvs::Trigger::Response& response);
   
   template<class M, class T>
-  void updateSubscriber(ros::Subscriber& sub, const std::string newTopic,
+  void updateSubscriber(ros::Subscriber& sub, const std::string new_topic,
                         void(T::*callback)(M));
   
   template<class M>
-  void updatePublisher(ros::Publisher& pub, const std::string newTopic);
+  void updatePublisher(ros::Publisher& pub, const std::string new_topic);
   
 #if RAS_GROUP8_MOTOR_CONTROLLER_PUBLISH_PID
   /* Optional method that publishes the pid controller state to the three fixed topics reference,
@@ -51,42 +52,43 @@ private:
   
   /* Node handle
    */
-  ros::NodeHandle& nodeHandle_;
+  ros::NodeHandle& node_handle_;
   
   /* Subscribers
    */
-  ros::Subscriber wheelEncoderSubscriber_;
-  ros::Subscriber velocitySubscriber_;
+  ros::Subscriber wheel_encoder_subscriber_;
+  ros::Subscriber velocity_subscriber_;
   
   /* Publishers
    */
-  ros::Publisher motorPublisher_;
+  ros::Publisher motor_publisher_;
   
 #if RAS_GROUP8_MOTOR_CONTROLLER_PUBLISH_PID
-  ros::Publisher pidReferencePublisher_;
-  ros::Publisher pidInputPublisher_;
-  ros::Publisher pidOutputPublisher_;
+  ros::Publisher pid_reference_publisher_;
+  ros::Publisher pid_input_publisher_;
+  ros::Publisher pid_output_publisher_;
 #endif
   
   /* Services
    */
-  ros::ServiceServer reloadService_;
+  ros::ServiceServer reload_service_;
   
   /* Parameters
    */
-  std::string wheelEncoderTopic_;
-  std::string velocityTopic_;
-  std::string motorTopic_;
+  std::string wheel_encoder_topic_;
+  std::string velocity_topic_;
+  std::string motor_topic_;
   
-  double encoderTicsPerRevolution_;
-  ros::Duration velocityExpireTimeout_;
+  double encoder_tics_per_revolution_;
+  ros::Duration velocity_expire_timeout_;
   
-  /**/
-  PIDController pidController_;
-  double velocityTarget_;
-  ros::Time velocityTargetExpireTime_;
-  
-  phidgets::motor_encoder encoderMsgPrev_;
+  /* Variables */
+  PIDController pid_controller_;
+  double velocity_target_;
+  ros::Time velocity_target_expire_time_;
+  /* Store a pointer to the current encoder callback in use */
+  void (MotorController::*wheel_encoder_callback_)(const phidgets::motor_encoder&);
+  phidgets::motor_encoder encoder_msg_prev_;
 };
 
 }
