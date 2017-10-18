@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(ras_group8_motor_controller)
 
-set(RAS_GROUP8_MOTOR_CONTROLLER_PUBLISH_PID 1)
+set(RAS_GROUP8_MOTOR_CONTROLLER_PUBLISH_STATE 1)
 
 find_package(catkin REQUIRED
 	COMPONENTS
@@ -9,6 +9,8 @@ find_package(catkin REQUIRED
 	geometry_msgs
 	std_msgs
 	std_srvs
+	phidgets
+	#rosbag
 )
 
 catkin_package(
@@ -20,6 +22,8 @@ catkin_package(
 		geometry_msgs
 		std_msgs
 		std_srvs
+		phidgets
+		#rosbag
 	
 # DEPENDS
 )
@@ -32,6 +36,7 @@ include_directories(
 add_executable(${PROJECT_NAME}
 	src/motor_controller_node.cpp
 	src/PIDController.cpp
+	src/StaticController.cpp
 	src/MotorController.cpp
 )
 
@@ -48,6 +53,35 @@ target_link_libraries(${PROJECT_NAME}
 # Make main executable
 install(
   TARGETS ${PROJECT_NAME}
+	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+	RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+#
+# Ramp Controller
+#
+
+add_executable(characterizer
+	src/characterizer_node.cpp
+	src/PIDController.cpp
+	src/StaticController.cpp
+	src/MotorController.cpp
+)
+
+add_dependencies(characterizer
+	${catkin_EXPORTED_TARGETS}
+)
+
+target_link_libraries(characterizer
+	${catkin_LIBRARIES}
+)
+
+#catkin_add_gtest(motor_controller_tests test/test_motor_controller.cpp src/MotorController.cpp)
+
+# Make main executable
+install(
+	TARGETS characterizer
 	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 	RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
