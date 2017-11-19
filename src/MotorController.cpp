@@ -1,5 +1,4 @@
 #include <ras_group8_motor_controller/MotorController.hpp>
-
 #include <ras_group8_motor_controller/PIDController.hpp>
 #include <ras_group8_motor_controller/StaticController.hpp>
 
@@ -40,25 +39,27 @@ MotorController<Controller>::MotorController(ros::NodeHandle& node_handle,
     node_handle_.advertise<std_msgs::Float32>(motor_topic, 1);
   
   twist_publisher_ =
-    node_handle_.advertise<geometry_msgs::TwistStamped>(twist_topic, 1);
+    node_handle_.advertise<geometry_msgs::TwistStamped>(twist_topic, 1, true);
     
 #if RAS_GROUP8_MOTOR_CONTROLLER_PUBLISH_STATE
   /* Setup logger outputs here
    * Their enpoints are not configurable
    */
-    pid_reference_publisher_ =
+    state_reference_publisher_ =
       node_handle_.advertise<std_msgs::Float32>("reference", 1);
     
-    pid_input_publisher_ =
+    state_input_publisher_ =
       node_handle_.advertise<std_msgs::Float32>("input", 1);
     
-    pid_output_publisher_ =
+    state_output_publisher_ =
       node_handle_.advertise<std_msgs::Float32>("output", 1);
     
   ROS_INFO("Compiled with log output.");
 #endif
   
-  ROS_INFO("meters_per_tics_ =  %f", meters_per_tics_);
+  /* Publish the initial state */
+  publishTwist(ros::Time::now(), 0.0);
+  
   ROS_INFO("Successfully launched node.");
 }
 
@@ -78,23 +79,38 @@ void MotorController<Controller>::setTargetVelocity(double velocity)
   velocity_target_expire_time_ = ros::Time::now() + velocity_expire_timeout_;
 }
 
+template<class Controller>
+void MotorController<Controller>::publishTwist(const ros::Time& now,
+                                               double velocity)
+{
+  static int32_t seq = 0; /* TODO: unsigned? */
+  geometry_msgs::TwistStamped twist_msg;
+  
+  twist_msg.header.stamp   = now;
+  twist_msg.header.seq     = seq;
+  twist_msg.twist.linear.x = velocity;
+  
+  twist_publisher_.publish(twist_msg);
+  seq += 1;
+}
+
 #if RAS_GROUP8_MOTOR_CONTROLLER_PUBLISH_STATE
-  /* Optional method that publishes the pid controller state to the three fixed topics reference,
-   * input and output.
+  /* Optional method that publishes the pid controller state to the three fixed
+   * topics reference, input and output.
    */
 template<class Controller>
-void MotorController<Controller>::publishPidState(double reference, double input, double output)
+void MotorController<Controller>::publishState(double reference, double input, double output)
 {
   std_msgs::Float32 msg;
   
   msg.data = reference;
-  pid_reference_publisher_.publish(msg);
+  state_reference_publisher_.publish(msg);
   
   msg.data = input;
-  pid_input_publisher_.publish(msg);
+  state_input_publisher_.publish(msg);
   
   msg.data = output;
-  pid_output_publisher_.publish(msg);
+  state_output_publisher_.publish(msg);
 }
 #endif
 
@@ -114,16 +130,16 @@ void MotorController<Controller>::wheelEncoderCallback(const phidgets::motor_enc
   /* If we don't seem to have missed any messages */
   if (0 < dt && dt < 0.2) { /* TODO: Do not hard-code this value */
     /* Calculate wheel velocity */
-    /* TODO: Convert to a multiplication instead of a division */
     velocity = (double)(msg.count - encoder_msg_prev_.count) /
                  dt * meters_per_tics_;
                 
     /* Check that the set velocity has not expired */
-    if (velocity_target_expire_time_ < msg.header.stamp) {
+    if (velocity_target_ > 0 &&
+        velocity_target_expire_time_ < msg.header.stamp) {
       ROS_INFO("No new velocity setting for a while. Setting to zero.");
       velocity_target_ = 0.0;
     }
-  
+    
     if (velocity_target_ == 0.0) {
       motor_msg.data = 0.0;
     } else {
@@ -144,15 +160,11 @@ void MotorController<Controller>::wheelEncoderCallback(const phidgets::motor_enc
     /* Set new motor value */
     motor_publisher_.publish(motor_msg);
     
-    /* Publish twist */
-    twist_msg.header.stamp = msg.header.stamp;
-    twist_msg.twist.linear.x = velocity;
-    
-    twist_publisher_.publish(twist_msg);
+    publishTwist(msg.header.stamp, velocity);
     
 #if RAS_GROUP8_MOTOR_CONTROLLER_PUBLISH_STATE
     /* Publish the internal PID state */
-    publishPidState(velocity_target_, velocity, motor_msg.data);
+    publishState(velocity_target_, velocity, motor_msg.data);
 #endif
   }
     
@@ -169,11 +181,8 @@ void MotorController<Controller>::velocityCallback(const std_msgs::Float32::Cons
 {
   std_msgs::Float32 msg = *ptr;
   
-  //ROS_INFO("New velocity: %f [m/s]", msg.data);
   /* Store the expiration time of the velocity */
   setTargetVelocity(msg.data);
-  /* Convert from linear velocity (m/s) to wheel velocity (rev/s) */
-  //setTargetVelocity(msg.data * wheel_rev_per_meter_);
 }
 
 /* Shutdown
@@ -200,7 +209,7 @@ MotorController<Controller>
   double wheel_radius;
   
   std::string motor_topic;
-  std::string twist_topic("twist");
+  std::string twist_topic;
   std::string wheel_encoder_topic;
   std::string velocity_topic;
   
@@ -218,10 +227,6 @@ MotorController<Controller>
     exit(-1);
   ROS_INFO("P: wheel_encoder_topic_ = %s", wheel_encoder_topic.c_str());
   
-  if (!n.getParam("velocity_topic", velocity_topic))
-    exit(-1);
-  ROS_INFO("P: velocity_topic_ = %s", velocity_topic.c_str());
-  
   if (!n.getParam("wheel_encoder_tics_per_rev", encoder_tics_per_revolution))
     exit(-1);
   ROS_INFO("P: encoder_tics_per_revolution_ = %f", encoder_tics_per_revolution);
@@ -230,13 +235,15 @@ MotorController<Controller>
     exit(-1);
   ROS_INFO("P: wheel_radius = %f", wheel_radius);
   
-  if (!n.getParam("reverse_direction", reverse_direction))
-    exit(-1);
-  ROS_INFO("P: reverse_direction_ = %u", reverse_direction);
-  
   /* Get optional parameters
    */
-  twist_topic = n.param("twist_topic", twist_topic);
+  velocity_topic = n.param("velocity_topic", std::string("velocity"));
+  ROS_INFO("P: velocity_topic_ = %s", velocity_topic.c_str());
+   
+  reverse_direction = n.param("reverse_direction", false);
+  ROS_INFO("P: reverse_direction_ = %u", reverse_direction);
+   
+  twist_topic = n.param("twist_topic", std::string("twist"));
   ROS_INFO("P: twist_topic = %s", twist_topic.c_str());
   
   velocity_expire_timeout = n.param("velocity_timeout", 0.5);

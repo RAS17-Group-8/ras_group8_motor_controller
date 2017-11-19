@@ -1,22 +1,21 @@
 <launch>
+		
+	<arg name="phidgets_serial" default="473021" />
 	
-	<!-- Launch the Platform Node -->
-	<node name="platform"
-         pkg="ras_group8_platform"
-        type="ras_group8_platform">
-		<rosparam command="load" file="$(find ras_group8_platform)/config/default.yaml" />
-	</node>
+	<!-- Connect the two nodes together -->
+	<remap from="motorcontrol/encoder" to="controller/encoder" />
+	<remap from="controller/cmd_vel" to="motorcontrol/cmd_vel" />
 	
 	<!-- Launch a motor controller -->
 	<node name="phidgets"
 	       pkg="phidgets"
 	      type="motor"
-	      args="_serial:=473021"
+	      args="_serial:=$(arg phidgets_serial)"
 	   respawn="true">
 	</node>
 
 	<!-- Launch one Motor Controller Node -->
-	<node name="ras_group8_motor_controller"
+	<node name="controller"
   	     pkg="ras_group8_motor_controller"
   	    type="ras_group8_motor_controller"
   	  output="screen">
